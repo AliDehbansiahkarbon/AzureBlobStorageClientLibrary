@@ -18,12 +18,14 @@ type
     Btn_RenameBlob: TButton;
     Btn_LoadBlobs: TButton;
     Btn_UploadBlob: TButton;
+    Btn_CopyBlob: TButton;
     procedure Btn_ExistsFolderClick(Sender: TObject);
     procedure Btn_LoadContainersClick(Sender: TObject);
     procedure Btn_DownloadBlobClick(Sender: TObject);
     procedure Btn_RenameBlobClick(Sender: TObject);
     procedure Btn_LoadBlobsClick(Sender: TObject);
     procedure Btn_UploadBlobClick(Sender: TObject);
+    procedure Btn_CopyBlobClick(Sender: TObject);
   private
     procedure LoadImageFromStream(AImage: TImage; AData: TStream);
     function LoadContainersList(AStorageAccountName: string; out AContainerList: TStringList): Boolean;
@@ -46,7 +48,6 @@ procedure TAzureOperations.Btn_ExistsFolderClick(Sender: TObject);
 var
   LvAzureResponseInfo: TAzureResponseInfo;
   LvTempStr: string;
-  LvBlobObj: TAzureBlobObject;
   LvAzureClient: TAzureClient;
 begin
   LvAzureClient :=  TAzureClient.Create(cStorageAccount, cAccountKey, apHTTPS);
@@ -91,6 +92,23 @@ begin
   finally
     LvContainerList.Free;
   end;
+end;
+
+procedure TAzureOperations.Btn_CopyBlobClick(Sender: TObject);
+var
+  LvAzureResponseInfo: TAzureResponseInfo;
+  LvAzureClient: TAzureClient;
+begin
+  LvAzureClient :=  TAzureClient.Create(cStorageAccount, cAccountKey, apHTTPS);
+  try
+    //Copy a blob from a container to another container.
+    if LvAzureClient.CopyBlob('testcontainer', 'Embarcadero.jpg', 'newcontainer', 'newEmbarcadero.jpg', LvAzureResponseInfo) then
+      ShowMessage('Done!')
+    else
+      ShowMessage('Failed!' + #13 + LvAzureResponseInfo.StatusMsg);
+  finally
+    LvAzureClient.Free;
+  end
 end;
 
 procedure TAzureOperations.Btn_DownloadBlobClick(Sender: TObject); //Download a blob file to a stream

@@ -2,7 +2,7 @@ object AzureOperations: TAzureOperations
   Left = 0
   Top = 0
   Caption = 'Azure Client Operations.'
-  ClientHeight = 175
+  ClientHeight = 199
   ClientWidth = 452
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -91,6 +91,15 @@ object AzureOperations: TAzureOperations
     Caption = 'Upload Blob'
     TabOrder = 7
     OnClick = Btn_UploadBlobClick
+  end
+  object Btn_CopyBlob: TButton
+    Left = 8
+    Top = 168
+    Width = 115
+    Height = 25
+    Caption = 'Copy Blob'
+    TabOrder = 8
+    OnClick = Btn_CopyBlobClick
   end
   object OpenDialog1: TOpenDialog
     Left = 312
