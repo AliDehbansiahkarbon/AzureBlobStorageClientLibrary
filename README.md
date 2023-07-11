@@ -1,4 +1,4 @@
-# Azure Data Storage client library for Embarcadero Delphi.
+# Tiny Azure Data Storage client library for Embarcadero Delphi.
 
 A super easy-to-use library to work with Azure storage using Embarcadero Delphi.
 No need for documentation! just read the code, it will speak by itself!
