@@ -46,7 +46,6 @@ implementation
 
 procedure TAzureOperations.Btn_ExistsFolderClick(Sender: TObject);
 var
-  LvAzureResponseInfo: TAzureResponseInfo;
   LvTempStr: string;
   LvAzureClient: TAzureClient;
 begin
@@ -69,6 +68,7 @@ var
   LvAzureClient: TAzureClient;
   LvBlobList: TBlobList;
 begin
+  LvBlobList := nil;
   LvAzureClient := TAzureClient.Create(cStorageAccount, cAccountKey, apHTTPS);
   try
     LvBlobList := LvAzureClient.ListBlobs('testcontainer', EmptyStr, True, LvAzureResponseInfo);

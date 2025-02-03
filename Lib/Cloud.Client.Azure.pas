@@ -59,7 +59,6 @@ type
       procedure SetAccountKey(AAccountKey: string);
       procedure SetAzureProtocol(AProtocol: TAzureProtocol);
       function FileToArray(AFullFilename: string): TArray<Byte>;
-      function StreamToArray(AStream: TStream): TArray<Byte>;
       function ByteContent(ADataStream: TStream): TBytes;
       function GMT2DateTime(const AGmtDate: string):TDateTime;
       function CheckContainer(const AContainer: string) : string;
@@ -159,19 +158,6 @@ begin
     Result := ByteContent(LvFStream);
   finally
     LvFStream.Free;
-  end;
-end;
-
-function TAzureClient.StreamToArray(AStream: TStream): TArray<Byte>;
-var
-  LvBStream : TBytesStream;
-begin
-  LvBStream := TBytesStream.Create(Result);
-  try
-    LvBStream.LoadFromStream(AStream);
-    Result := LvBStream.Bytes;
-  finally
-    LvBStream.Free
   end;
 end;
 
@@ -285,26 +271,37 @@ var
   LvBlobService: TAzureBlobService;
   LvContent: TArray<Byte>;
   LvCloudResponseInfo: TCloudResponseInfo;
-  LvContainer: string;
-  LvBlobName: string;
+  LvContainer, LvBlobName: string;
+  LvOptionalHeaders, LvMetadata: TArray<TPair<string, string>>;
 begin
   LvBlobService := TAzureBlobService.Create(FAzureConnection);
   try
     LvContainer := CheckContainer(AContainer);
     LvCloudResponseInfo := TCloudResponseInfo.Create;
     try
-      LvBlobService.Timeout := FConnectionTimeOut;
-      LvContent := FileToArray(ASourceFilePath);
-      if ABlobName = EmptyStr then
-        LvBlobName := ASourceFilePath
-      else
-        LvBlobName := ABlobName;
+      try
+        LvBlobService.Timeout := FConnectionTimeOut;
+        LvContent := FileToArray(ASourceFilePath);
 
-      if LvBlobName.StartsWith('/') then
-        LvBlobName := Copy(LvBlobName, 2, Length(LvBlobName));
+        if ABlobName.IsEmpty then
+          LvBlobName := ASourceFilePath
+        else
+          LvBlobName := ABlobName;
 
-      Result := LvBlobService.PutBlockBlob(LvContainer, LvBlobName, LvContent, EmptyStr, nil, nil, LvCloudResponseInfo);
-      AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
+        if LvBlobName.StartsWith('/') then
+          LvBlobName := Copy(LvBlobName, 2, Length(LvBlobName));
+
+        LvOptionalHeaders := []; // adjust if needed
+        LvMetadata := []; // adjust if needed
+
+        Result := LvBlobService.PutBlockBlob(LvContainer, LvBlobName, '', LvContent, LvOptionalHeaders, LvMetadata, LvCloudResponseInfo);
+        AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
+      except on E: Exception do
+        begin
+          Result := False;
+          //raise; //raise your desired exception/message
+        end;
+      end;
     finally
       LvCloudResponseInfo.Free;
     end;
@@ -320,6 +317,7 @@ var
   LvCloudResponseInfo: TCloudResponseInfo;
   LvContainer: string;
   LvBlobName: string;
+  LvOptionalHeaders, LvMetadata: TArray<TPair<string, string>>;
 begin
   Result := False;
   AResponseInfo.StatusCode := 500;
@@ -338,7 +336,9 @@ begin
       LvCloudResponseInfo := TCloudResponseInfo.Create;
       try
         LvContent := ByteContent(AStream);
-        Result := LvBlobService.PutBlockBlob(LvContainer, LvBlobName, LvContent, EmptyStr, nil, nil, LvCloudResponseInfo);
+        LvOptionalHeaders := []; // adjust if needed
+        LvMetadata := [];        // adjust if needed
+        Result := LvBlobService.PutBlockBlob(LvContainer, LvBlobName, '', LvContent, LvOptionalHeaders, LvMetadata, LvCloudResponseInfo);
         AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
       finally
         LvCloudResponseInfo.Free;
@@ -360,8 +360,8 @@ var
   ABlobService: TAzureBlobService;
   LvFStream: TFileStream;
   LvCloudResponseInfo: TCloudResponseInfo;
-  LVContainer: string;
-  LvBlobName: string;
+  LvContainer, LvBlobName: string;
+  LvProperties, LvMetadata: TArray<TPair<string, string>>;
 begin
   LVContainer := CheckContainer(AContainer);
   LvBlobName := RemoveFirstSlash(ABlobName);
@@ -373,13 +373,18 @@ begin
       try
         LvCloudResponseInfo := TCloudResponseInfo.Create;
         try
-          Result := ABlobService.GetBlob(LVContainer, LvBlobName, LvFStream, EmptyStr, LvCloudResponseInfo);
+          LvProperties := [];
+          LvMetadata := [];
+          Result := ABlobService.GetBlob(LvContainer, LvBlobName, '', -1, -1, False, LvProperties, LvMetadata, LvFStream, LvCloudResponseInfo);
           AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
         finally
           LvCloudResponseInfo.Free;
         end;
-      except
-        Result := False;
+      except on E: Exception do
+        begin
+          Result := False;
+          //raise; // Raise your desired exception/Message.
+        end;
       end;
     finally
       LvFStream.Free;
@@ -403,8 +408,8 @@ function TAzureClient.DownloadBlob(const AContainer, ABlobName: string; out ARes
 var
   LvBlobService: TAzureBlobService;
   LvCloudResponseInfo: TCloudResponseInfo;
-  LvContainer: string;
-  LvBlobName: string;
+  LvContainer, LvBlobName: string;
+  LvProperties, LvMetadata: TArray<TPair<string, string>>;
 begin
   LvContainer := CheckContainer(AContainer);
   LvBlobName := RemoveFirstSlash(ABlobName);
@@ -413,7 +418,9 @@ begin
     LvBlobService.Timeout := FConnectionTimeOut;
     LvCloudResponseInfo := TCloudResponseInfo.Create;
     try
-      Result := LvBlobService.GetBlob(LvContainer, LvBlobName, AStream, EmptyStr, LvCloudResponseInfo);
+      LvProperties := [];
+      LvMetadata := [];
+      Result := LvBlobService.GetBlob(LvContainer, LvBlobName, EmptyStr, -1, -1, False, LvProperties, LvMetadata, AStream, LvCloudResponseInfo);
       AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
     finally
       LvCloudResponseInfo.Free;
@@ -435,22 +442,26 @@ function TAzureClient.CopyBlob(const ASourceContainer, ASourceBlobName: string; 
 var
   LvBlobService: TAzureBlobService;
   LvCloudResponseInfo: TCloudResponseInfo;
-  LvSourceContainer: string;
-  LvTargetContainer: string;
-  LvSourceBlobName: string;
-  LvTargetBlobName: string;
+  LvSourceContainer, LvTargetContainer,
+  LvSourceBlobName, LvTargetBlobName: string;
+  LvCopyConditionals: TBlobActionConditional;
+  LvMetadata: TArray<TPair<string, string>>;
 begin
   LvSourceContainer := CheckContainer(ASourceContainer);
   LvTargetContainer := CheckContainer(ATargetContainer);
   LvSourceBlobName := RemoveFirstSlash(ASourceBlobName);
   LvTargetBlobName := RemoveFirstSlash(ATargetBlobName);
+
   LvBlobService := TAzureBlobService.Create(FAzureConnection);
   try
     LvBlobService.Timeout := FConnectionTimeOut;
     try
       LvCloudResponseInfo := TCloudResponseInfo.Create;
       try
-        Result := LvBlobService.CopyBlob(LvTargetContainer, LvTargetBlobName, LvSourceContainer, LvSourceBlobName, EmptyStr, nil, LvCloudResponseInfo);
+        LvCopyConditionals := Default(TBlobActionConditional); // No specific conditions by default, adjust if needed.
+        LvMetadata := []; // adjust if needed.
+
+        Result := LvBlobService.CopyBlob(LvTargetContainer, LvTargetBlobName, LvSourceContainer, LvSourceBlobName, EmptyStr, LvCopyConditionals, LvMetadata, LvCloudResponseInfo);
         AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
       finally
         LvCloudResponseInfo.Free;
@@ -520,51 +531,39 @@ begin
   end;
 end;
 
-function TAzureClient.ExistsFolder(const AContainer, AFolderName : string) : Boolean;
+function TAzureClient.ExistsFolder(const AContainer, AFolderName: string): Boolean;
 var
   LvBlobService: TAzureBlobService;
-  LvBlob: TAzureBlob;
-  LvBlobList: TList<TAzureBlob>;
   LvCloudResponseInfo: TCloudResponseInfo;
-  LvParams: TStrings;
-  LvNextMarker: string;
-  LvContainer: string;
-  LvFolderName: string;
+  LvContainer, LvFolderName, LvNextMarker, LvResponseXML: string;
+  LvBlobArray: TArray<TAzureBlobItem>;
+  LvBlobPrefixes: TArray<string>;
+  LvDatasets: TAzureBlobDatasets;
 begin
   Result := False;
   LvContainer := CheckContainer(AContainer);
+
   LvBlobService := TAzureBlobService.Create(FAzureConnection);
   try
     LvBlobService.Timeout := FConnectionTimeOut;
-    LvParams := TStringList.Create;
+
+    if not AFolderName.EndsWith('/') then
+      LvFolderName := AFolderName + '/'
+    else
+      LvFolderName := AFolderName;
+
+    LvNextMarker := EmptyStr;
+    LvCloudResponseInfo := TCloudResponseInfo.Create;
     try
-      if not AFolderName.EndsWith('/') then
-        LvFolderName := AFolderName + '/'
-      else
-        LvFolderName := AFolderName;
+      LvDatasets := [];
+      LvBlobArray := LvBlobService.ListBlobs(LvContainer, LvFolderName, '/', LvNextMarker, 1,
+                                             LvDatasets, LvNextMarker, LvBlobPrefixes,
+                                             LvResponseXML, LvCloudResponseInfo);
 
-      LvParams.Values['prefix'] := LvFolderName;
-      LvParams.Values['delimiter'] := '/';
-      LvParams.Values['maxresults'] := '1';
-      LvNextMarker := EmptyStr;
-      LvCloudResponseInfo := TCloudResponseInfo.Create;
-      try
-        LvBlobList := LvBlobService.ListBlobs(LvContainer, LvNextMarker, LvParams, LvCloudResponseInfo);
-        try
-          if (Assigned(LvBlobList)) and (LvBlobList.Count > 0) and (LvCloudResponseInfo.StatusCode = 200) then
-            Result := True;
-        finally
-
-          for LvBlob in LvBlobList do
-            LvBlob.Free;
-
-          LvBlobList.Free;
-        end;
-      finally
-        LvCloudResponseInfo.Free;
-      end;
+      if (Length(LvBlobArray) > 0) and (LvCloudResponseInfo.StatusCode = 200) then
+        Result := True;
     finally
-      LvParams.Free;
+      LvCloudResponseInfo.Free;
     end;
   finally
     LvBlobService.Free;
@@ -883,45 +882,28 @@ procedure TAzureClient.ListContainers(const AStorageAccountName: string; out ARe
 var
   LvBlobService: TAzureBlobService;
   LvCloudResponseInfo: TCloudResponseInfo;
-  LvNextMarker: string;
-  LvParams: TStrings;
-  LvContainer: TAzureContainer;
-  LvContainerList: TList<TAzureContainer>;
+  LvNextMarker, LvResponseXML: string;
+  LvContainerArray: TArray<TAzureContainerItem>;
+  LvContainer: TAzureContainerItem;
 begin
+  AContainerList.Clear;
   LvNextMarker := EmptyStr;
   LvBlobService := TAzureBlobService.Create(FAzureConnection);
   LvCloudResponseInfo := TCloudResponseInfo.Create;
   try
     LvBlobService.Timeout := FConnectionTimeOut;
     repeat
-      LvParams := TStringList.Create;
-      try
-        if AStorageAccountName <> EmptyStr then
-          LvParams.Values['prefix'] := AStorageAccountName;
+      LvContainerArray := LvBlobService.ListContainers(False, AStorageAccountName, LvNextMarker, 100,
+                                                       LvNextMarker, LvResponseXML, LvCloudResponseInfo);
 
-        if LvNextMarker <> EmptyStr then
-          LvParams.Values['marker'] := LvNextMarker;
-
-        LvContainerList := LvBlobService.ListContainers(LvNextMarker, LvParams, LvCloudResponseInfo);
-        try
-          AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
-          if (AResponseInfo.StatusCode = 200) and (Assigned(LvContainerList)) then
-          begin
-            AContainerList.Capacity := LvContainerList.Count;
-            for LvContainer in LvContainerList do
-              AContainerList.Add(LvContainer.Name);
-          end;
-        finally
-          if Assigned(LvContainerList) then
-          begin
-            for LvContainer in LvContainerList do LvContainer.Free;
-              LvContainerList.Free;
-          end;
-        end;
-      finally
-        LvParams.Free;
+      AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
+      if (AResponseInfo.StatusCode = 200) and (Length(LvContainerArray) > 0) then
+      begin
+        for LvContainer in LvContainerArray do
+          AContainerList.Add(LvContainer.Name);
       end;
-    until (LvNextMarker = EmptyStr) or (AResponseInfo.StatusCode <> 200);
+
+    until (LvNextMarker.IsEmpty) or (AResponseInfo.StatusCode <> 200);
   finally
     LvBlobService.Free;
     LvCloudResponseInfo.Free;
@@ -943,7 +925,6 @@ begin
     LvBlobService.Timeout := FConnectionTimeOut;
     LvCloudResponseInfo := TCloudResponseInfo.Create;
     try
-//      Result := LvBlobService.CreateContainer(AContainer, nil, APublicAccess, LvCloudResponseInfo);
       Result := LvBlobService.CreateContainer(AContainer, LvMetaData, APublicAccess, LvCloudResponseInfo);
       AResponseInfo := GetResponseInfo(LvCloudResponseInfo);
     finally
